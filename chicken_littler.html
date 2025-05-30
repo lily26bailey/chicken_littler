@@ -10,10 +10,11 @@
       // minimax with iterative deepening or persistent tree search?
       // persistent: expand tree one node at a time, select node which optimizes 
       // combo of exploration/exploitation
-      // alpha beta pruning
-      // evaluation function: hybrid?
-      // if terminal state, take the move to win
-      // headstart 
+      // alpha beta pruning - done
+      // evaluation function: hybrid (weighs intermediate reward, mobility, and minimized opp mob) - done
+      // added epsilon greedy to explore more earlier on in game, exploit later on
+      // if terminal state, take the move to win - done
+      // headstart - done
       // bigswitch
       // symbolizing of game rules
       // bigswitch to switch between different game strategies depending on the game
@@ -31,6 +32,7 @@
       var library = [];
       var roles = [];
       var state = [];
+      var headstartMove = null;
 
       //==============================================================================
       // This player uses iterative deepening to explore the game tree, one level at a time
@@ -50,9 +52,18 @@
         library = definemorerules([],rs.slice(1));
         roles = findroles(library);
         state = findinits(library);
+        maxMobility = findlegals(state, library).length;
+        var deadline = Date.now() + (startclock - 2) * 1000;  // Leave buffer
+        headstartMove = findlegalx(state, library);  // fallback
+        var k = 1;
+        while (Date.now() < deadline) {
+          var action = simpleminimaxid(role, state, k, deadline);
+          if (action === false) break;
+          headstartMove = action;
+          k++;
+        }
         return 'ready'
       }
-      // testing
 
       function play (move) {
         if (move!==nil) {
@@ -61,6 +72,12 @@
         if (findcontrol(state,library)!==role) {
           return false
         };
+        // if it is the first move, use the best move found during headstart
+        if (headstartMove !== null) {
+          var result = headstartMove;
+          headstartMove = null;  // prevent reuse
+          return result;
+        }
         return playminimaxid(role)
       }
 
@@ -79,6 +96,23 @@
       var nodes = 0;
       var terminals = 0;
 
+      function evaluate(role, state) {
+        // 1. Intermediate reward (normalized to 0–100)
+        var reward = findreward(role, state, library);
+
+        // 2. Mobility heuristic (normalized)
+        var legals = findlegals(state, library).length;
+        var mobility = 100 * (legals / maxMobility); // You’ll compute maxMobility during `start()`
+
+        // Opponent mobility minimization
+        var opponent = roles.find(r => r !== role);
+        var oppMobility = findlegals(state, library, opponent).length;
+        var oppPenalty = 100 * (1 - (oppMobility / maxMobility));
+
+        // Weighted sum (adjust weights as needed)
+        return 0.5 * reward + 0.3 * mobility + 0.2 * oppPenalty;
+      }
+
       function playminimaxid(role) {
         var deadline = Date.now() + (playclock - 2) * 1000;
         console.log(deadline);
@@ -88,11 +122,19 @@
           var action = simpleminimaxid(role, state, k, deadline);
           if (action === false) {
             console.log(k - 1);
-            return best;
+            break;
           }
           best = action;
         }
-
+        // ε-greedy: explore randomly with probability epsilon
+        // epsilon decreases after each move to prioritize exploration less over time
+        // and exploitation more as become more confident in moves
+        epsilon = Math.max(0.01, epsilon * 0.95);
+        if (Math.random() < epsilon) {
+          var legals = findlegals(state, library);
+          return legals[Math.floor(Math.random() * legals.length)];
+        }
+        // Otherwise exploit
         return best;
       }
 
@@ -123,7 +165,7 @@
         nodes++;
         if (findterminalp(state, library) || depth <= 0) {
           terminals++;
-          return findreward(role, state, library) * 1;
+          return evaluate(role, state);
         }
 
         if (Date.now() > deadline) return false;
