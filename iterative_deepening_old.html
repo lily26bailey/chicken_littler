@@ -25,7 +25,8 @@
       // added epsilon greedy to explore more earlier on in game, exploit later on
       // if terminal state, take the move to win - done
       // headstart - done
-      // bigswitch
+      // bigswitch - use startclock to analyze game and use results to adjust runtime play strategy
+      // 
       // symbolizing of game rules
       // bigswitch to switch between different game strategies depending on the game
       // pruning
@@ -44,6 +45,7 @@
       var state = [];
       var epsilon = 0.2; // Initial exploration rate of 20%
       var headstartMove = null; // store first move found during headstart
+      var useMonteCarlo = false;  // Bigswitch toggles this
 
       //==============================================================================
 
@@ -86,7 +88,7 @@
         roles = findroles(library);
         state = findinits(library);
         // time buffer
-        var deadline = Date.now() + (startclock - 2.5) * 1000;
+        var deadline = Date.now() + (startclock - 3.0) * 1000;
         // fallback move
         headstartMove = findlegals(state, library)[0];
         var best = headstartMove;
@@ -98,6 +100,54 @@
           best = action;
         }
         headstartMove = best;
+
+        // this function runs four simulations  to preliminarily identify the reward structure
+        // of the game by looking at branching factor, whether there exists an intermediate
+        // reward, and whether there is a good evaluation signal
+        function bigswitchInit() {
+          var simulations = 4;
+          var totalReward = 0;
+          var totalRewardStates = 0;
+          var totalMoves = 0;
+          var totalSteps = 0;
+
+          for (var i = 0; i < simulations; i++) {
+            var s = state;
+            for (var j = 0; j < 5; j++) {
+              if (findterminalp(s, library)) break;
+
+              var actions = findlegals(s, library);
+              if (actions.length === 0) break;
+
+              totalMoves += actions.length;
+              totalSteps++;
+
+              s = simulate(actions[Math.floor(Math.random() * actions.length)], s, library);
+
+              var reward = findreward(role, s, library);
+              totalReward += reward;
+              if (reward > 0) totalRewardStates++;
+            }
+          }
+          var avgBranching = totalMoves / totalSteps;
+          var avgReward = totalReward / (simulations * 5);
+          var rewardDensity = totalRewardStates / (simulations * 5);
+          // Use Monte Carlo evaluation function if rewards are sparse or 
+          // branching is very high because an eval heuristic is less reliable 
+          // in these instances
+          if (avgBranching > 25 || (avgReward < 5 && rewardDensity < 0.1)) {
+            useMonteCarlo = true;
+          } else {
+            useMonteCarlo = false;
+          }
+          console.log("Bigswitch decided:", {
+            avgBranching,
+            avgReward,
+            rewardDensity,
+            useMonteCarlo
+          });
+        }
+        bigswitchInit()
         return "ready";
       }
 
@@ -143,29 +193,60 @@
         );
       }
 
+      // simulate rewards from potential move sequences and take the average
+      // over all simulations to get expected reward from a current state
+      function monteCarloEval(state, deadline, rollouts = 5) {
+        var total = 0;
+        // reduce to avoid timeout
+        var maxDepth = 10;
+        for (var i = 0; i < rollouts; i++) {
+          var rolloutState = state;
+          var depth = 0;
+          while (!findterminalp(rolloutState, library) && depth < maxDepth) {
+            if (Date.now() > deadline - 100) break;  // fallback if time runs out
+            var actions = findlegals(rolloutState, library);
+            if (actions.length === 0) break;
+
+            var action = actions[Math.floor(Math.random() * actions.length)];
+            rolloutState = simulate(action, rolloutState, library);
+            depth++;
+          }
+
+          total += findreward(role, rolloutState, library);
+        }
+        return total / rollouts;
+      }
+
+
       function play(move) {
         if (typeof move !== "undefined" && move !== null) {
           state = simulate(move, state, library);
         }
-
         if (findcontrol(state, library) !== role) return false;
 
+        var legals = findlegals(state, library);
+        if (legals.length === 0) return false;
         // check if first move and if so, use whatever found from headstart
         if (headstartMove !== null) {
           var moveToPlay = headstartMove;
           headstartMove = null;  
           return moveToPlay;
         }
-        return playminimaxid();
+        var best = playminimaxid();
+        if (best === false || typeof best === "undefined") {
+          console.warn("Fallback: timeout or no move found, choosing random move");
+          return legals[0];  // fallback
+        }
+        return best;
       }
 
       // this function uses iterative deepening to search the tree iteratively at each depth
       function playminimaxid() {
-        var deadline = Date.now() + (playclock - 2.5) * 1000;
+        var deadline = Date.now() + (playclock - 3.0) * 1000;
         var best = findlegals(state, library)[0];
 
         // iterates through tree levels 1 through 4
-        for (var depth = 1; depth <= 4; depth++) {
+        for (var depth = 1; depth <= 3; depth++) {
           if (Date.now() > deadline) {
             break;
           }
@@ -207,6 +288,8 @@
         var best = actions[0];
         var score = 0;
         for (var i = 0; i < actions.length; i++) {
+          // check to make sure haven't reached deadline
+          if (Date.now() > deadline) return false;
           var newstate = simulate(actions[i], state, library);
           var newscore = minimaxid(newstate, depth, deadline, 0, 100);
           if (newscore === false) {
@@ -231,10 +314,10 @@
         }
         if (depth <= 0) {
           console.log("depth <= 0, eval function reached");
-          return combinedEval(state);
+          return useMonteCarlo ? monteCarloEval(state, deadline) : combinedEval(state);
         }
         if (Date.now() > deadline) {
-          return false;
+          return combinedEval(state);
         }
         if (findcontrol(state, library) === role) {
           return maxscore(state, depth, deadline, 0, 100); // alpha = 0, beta = 100
@@ -247,6 +330,7 @@
         if (actions.length === 0) return 0;
         var score = 0;
         for (var i = 0; i < actions.length; i++) {
+          if (Date.now() > deadline) return combinedEval(state);
           var newstate = simulate(actions[i], state, library);
           var newscore = minimaxid(newstate, depth - 1, deadline, alpha, beta);
           if (newscore === false) return false;
@@ -265,6 +349,7 @@
         if (actions.length === 0) return 0;
         var score = 100;
         for (var i = 0; i < actions.length; i++) {
+          if (Date.now() > deadline) return combinedEval(state);
           var newstate = simulate(actions[i], state, library);
           var newscore = minimaxid(newstate, depth - 1, deadline, alpha, beta);
           if (newscore === false) return false;
