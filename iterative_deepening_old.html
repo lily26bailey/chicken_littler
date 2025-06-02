@@ -17,11 +17,18 @@
     ></script>
     <script type="text/javascript">
       //==============================================================================
-      // The code below defines a basic legal player.
-      // Steps to customize:
-      // (1) Replace our definitions of ping, start, play, stop, abort with your code.
-      // (2) Be sure to set the variable 'player' to your player's id.
-      // (3) Also change the value in the 'Identifier' field in the HTML below.
+      // minimax with iterative deepening or persistent tree search?
+      // persistent: expand tree one node at a time, select node which optimizes
+      // combo of exploration/exploitation
+      // alpha beta pruning - done
+      // evaluation function: hybrid (weighs intermediate reward, mobility, and minimized opp mob) - done
+      // added epsilon greedy to explore more earlier on in game, exploit later on
+      // if terminal state, take the move to win - done
+      // headstart - done
+      // bigswitch
+      // symbolizing of game rules
+      // bigswitch to switch between different game strategies depending on the game
+      // pruning
       //==============================================================================
 
       var manager = "manager";
@@ -174,7 +181,7 @@
         var score = 0;
         for (var i = 0; i < actions.length; i++) {
           var newstate = simulate(actions[i], state, library);
-          var newscore = minimaxid(newstate, depth, deadline);
+          var newscore = minimaxid(newstate, depth, deadline, 0, 100);
           if (newscore === false) {
             return false;
           }
@@ -191,7 +198,7 @@
         return best;
       }
 
-      function minimaxid(state, depth, deadline) {
+      function minimaxid(state, depth, deadline, alpha, beta) {
         if (findterminalp(state, library)) {
           return findreward(role, state, library) * 1;
         }
@@ -203,42 +210,46 @@
           return false;
         }
         if (findcontrol(state, library) === role) {
-          return maxscore(state, depth, deadline);
+          return maxscore(state, depth, deadline, 0, 100); // alpha = 0, beta = 100
         }
-        return minscore(state, depth, deadline);
+        return minscore(state, depth, deadline, 0, 100);
       }
 
-      function maxscore(state, depth, deadline) {
+      function maxscore(state, depth, deadline, alpha, beta) {
         var actions = findlegals(state, library);
         if (actions.length === 0) return 0;
         var score = 0;
         for (var i = 0; i < actions.length; i++) {
           var newstate = simulate(actions[i], state, library);
-          var newscore = minimaxid(newstate, depth - 1, deadline);
-          if (newscore === false) {
-            return false;
-          } // check to see if we timed out
-          if (newscore === 100) return 100; // win shortcut
+          var newscore = minimaxid(newstate, depth - 1, deadline, alpha, beta);
+          if (newscore === false) return false;
+          if (newscore === 100) return 100; // winning shortcut
+
           if (newscore > score) score = newscore;
+          if (score > alpha) alpha = score;
+          if (alpha >= beta) break; // pruning happens here
         }
         return score;
       }
 
-      function minscore(state, depth, deadline) {
+
+      function minscore(state, depth, deadline, alpha, beta) {
         var actions = findlegals(state, library);
         if (actions.length === 0) return 0;
         var score = 100;
         for (var i = 0; i < actions.length; i++) {
           var newstate = simulate(actions[i], state, library);
-          var newscore = minimaxid(newstate, depth - 1, deadline);
-          if (newscore === false) {
-            return false;
-          }
+          var newscore = minimaxid(newstate, depth - 1, deadline, alpha, beta);
+          if (newscore === false) return false;
           if (newscore === 0) return 0; // loss shortcut
+
           if (newscore < score) score = newscore;
+          if (score < beta) beta = score;
+          if (alpha >= beta) break; // pruning happens here
         }
         return score;
       }
+
 
       function stop(move) {
         return false;
