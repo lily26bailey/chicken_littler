@@ -17,6 +17,7 @@
     ></script>
     <script type="text/javascript">
       //==============================================================================
+      // TEST 123456
       // minimax with iterative deepening or persistent tree search?
       // persistent: expand tree one node at a time, select node which optimizes
       // combo of exploration/exploitation
@@ -26,7 +27,7 @@
       // if terminal state, take the move to win - done
       // headstart - done
       // bigswitch - use startclock to analyze game and use results to adjust runtime play strategy
-      // 
+      //
       // symbolizing of game rules
       // bigswitch to switch between different game strategies depending on the game
       // pruning
@@ -45,7 +46,7 @@
       var state = [];
       var epsilon = 0.2; // Initial exploration rate of 20%
       var headstartMove = null; // store first move found during headstart
-      var useMonteCarlo = false;  // Bigswitch toggles this
+      var useMonteCarlo = false; // Bigswitch toggles this
 
       //==============================================================================
 
@@ -122,7 +123,11 @@
               totalMoves += actions.length;
               totalSteps++;
 
-              s = simulate(actions[Math.floor(Math.random() * actions.length)], s, library);
+              s = simulate(
+                actions[Math.floor(Math.random() * actions.length)],
+                s,
+                library
+              );
 
               var reward = findreward(role, s, library);
               totalReward += reward;
@@ -132,8 +137,8 @@
           var avgBranching = totalMoves / totalSteps;
           var avgReward = totalReward / (simulations * 5);
           var rewardDensity = totalRewardStates / (simulations * 5);
-          // Use Monte Carlo evaluation function if rewards are sparse or 
-          // branching is very high because an eval heuristic is less reliable 
+          // Use Monte Carlo evaluation function if rewards are sparse or
+          // branching is very high because an eval heuristic is less reliable
           // in these instances
           if (avgBranching > 25 || (avgReward < 5 && rewardDensity < 0.1)) {
             useMonteCarlo = true;
@@ -144,10 +149,10 @@
             avgBranching,
             avgReward,
             rewardDensity,
-            useMonteCarlo
+            useMonteCarlo,
           });
         }
-        bigswitchInit()
+        bigswitchInit();
         return "ready";
       }
 
@@ -203,7 +208,7 @@
           var rolloutState = state;
           var depth = 0;
           while (!findterminalp(rolloutState, library) && depth < maxDepth) {
-            if (Date.now() > deadline - 100) break;  // fallback if time runs out
+            if (Date.now() > deadline - 100) break; // fallback if time runs out
             var actions = findlegals(rolloutState, library);
             if (actions.length === 0) break;
 
@@ -217,7 +222,6 @@
         return total / rollouts;
       }
 
-
       function play(move) {
         if (typeof move !== "undefined" && move !== null) {
           state = simulate(move, state, library);
@@ -229,13 +233,15 @@
         // check if first move and if so, use whatever found from headstart
         if (headstartMove !== null) {
           var moveToPlay = headstartMove;
-          headstartMove = null;  
+          headstartMove = null;
           return moveToPlay;
         }
         var best = playminimaxid();
         if (best === false || typeof best === "undefined") {
-          console.warn("Fallback: timeout or no move found, choosing random move");
-          return legals[0];  // fallback
+          console.warn(
+            "Fallback: timeout or no move found, choosing random move"
+          );
+          return legals[0]; // fallback
         }
         return best;
       }
@@ -314,7 +320,9 @@
         }
         if (depth <= 0) {
           console.log("depth <= 0, eval function reached");
-          return useMonteCarlo ? monteCarloEval(state, deadline) : combinedEval(state);
+          return useMonteCarlo
+            ? monteCarloEval(state, deadline)
+            : combinedEval(state);
         }
         if (Date.now() > deadline) {
           return combinedEval(state);
@@ -343,7 +351,6 @@
         return score;
       }
 
-
       function minscore(state, depth, deadline, alpha, beta) {
         var actions = findlegals(state, library);
         if (actions.length === 0) return 0;
@@ -361,7 +368,6 @@
         }
         return score;
       }
-
 
       function stop(move) {
         return false;
