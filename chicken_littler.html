@@ -1,14 +1,29 @@
-
 <!-- saved from url=(0063)http://gamemaster.stanford.edu/gameplayers/chicken_littler.html -->
-<html><!--=======================================================================--><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<html>
+  <!--=======================================================================--><head>
+    <!-- <meta http-equiv="Content-Type" content="text/html; charset=windows-1252" /> -->
     <title>chicken_littler</title>
-    <script type="text/javascript" src="./chicken_littler_files/epilog.js"></script>
-    <script type="text/javascript" src="./chicken_littler_files/localstorage.js"></script>
-    <script type="text/javascript" src="./chicken_littler_files/general.js"></script>
+    <script
+      type="text/javascript"
+      src="http://epilog.stanford.edu/javascript/epilog.js"
+    ></script>
+    <script
+      type="text/javascript"
+      src="http://gamemaster.stanford.edu/javascript/localstorage.js"
+    ></script>
+    <script
+      type="text/javascript"
+      src="http://gamemaster.stanford.edu/metagaming/grounder.js"
+    ></script>
+    <!-- <script src="http://gamemaster.stanford.edu/gameplaying/pts.js"></script> -->
+    <script
+      type="text/javascript"
+      src="http://gamemaster.stanford.edu/reasoning/general.js"
+    ></script>
     <script type="text/javascript">
       //==============================================================================
       // minimax with iterative deepening or persistent tree search?
-      // persistent: expand tree one node at a time, select node which optimizes 
+      // persistent: expand tree one node at a time, select node which optimizes
       // combo of exploration/exploitation
       // alpha beta pruning - done
       // evaluation function: hybrid (weighs intermediate reward, mobility, and minimized opp mob) - done
@@ -33,6 +48,7 @@
       var roles = [];
       var state = [];
       var headstartMove = null;
+      var epsilon = 0.2; // Initial exploration rate of 20%
 
       //==============================================================================
       // This player uses iterative deepening to explore the game tree, one level at a time
@@ -40,21 +56,21 @@
       // gives the maximal value by that time, with the assumption that its opponent will choose the
       // action that minimizes our player's reward (minimax strategy).
 
-      function ping () {
-        return 'ready'
+      function ping() {
+        return "ready";
       }
-
-      function start (r,rs,sc,pc) {
+      // MOST RECENT
+      function start(r, rs, sc, pc) {
         role = r;
         rules = rs.slice(1);
         startclock = numberize(sc);
         playclock = numberize(pc);
-        library = definemorerules([],rs.slice(1));
+        library = definemorerules([], rs.slice(1));
         roles = findroles(library);
         state = findinits(library);
         maxMobility = findlegals(state, library).length;
-        var deadline = Date.now() + (startclock - 2) * 1000;  // Leave buffer
-        headstartMove = findlegalx(state, library);  // fallback
+        var deadline = Date.now() + (startclock - 2) * 1000; // Leave buffer
+        headstartMove = findlegalx(state, library); // fallback
         var k = 1;
         while (Date.now() < deadline) {
           var action = simpleminimaxid(role, state, k, deadline);
@@ -62,31 +78,32 @@
           headstartMove = action;
           k++;
         }
-        return 'ready'
+        return "ready";
       }
 
-      function play (move) {
-        if (move!==nil) {
-          compexecute(move,state,library)
-        };
-        if (findcontrol(state,library)!==role) {
-          return false
-        };
+      function play(move) {
+        // If move is undefined or null, skip compexecute:
+        if (typeof move !== "undefined" && move !== null) {
+          compexecute(move, state, library);
+        }
+        if (findcontrol(state, library) !== role) {
+          return false;
+        }
         // if it is the first move, use the best move found during headstart
         if (headstartMove !== null) {
           var result = headstartMove;
-          headstartMove = null;  // prevent reuse
+          headstartMove = null; // prevent reuse
           return result;
         }
-        return playminimaxid(role)
+        return playminimaxid(role);
       }
 
-      function stop (move) {
-        return false
+      function stop(move) {
+        return false;
       }
 
-      function abort () {
-        return false
+      function abort() {
+        return false;
       }
 
       //==============================================================================
@@ -102,29 +119,40 @@
 
         // 2. Mobility heuristic (normalized)
         var legals = findlegals(state, library).length;
-        var mobility = 100 * (legals / maxMobility); // You’ll compute maxMobility during `start()`
+        var mobility = 100 * (legals / maxMobility); // You'll compute maxMobility during `start()`
 
         // Opponent mobility minimization
-        var opponent = roles.find(r => r !== role);
+        var opponent = roles.find((r) => r !== role);
         var oppMobility = findlegals(state, library, opponent).length;
-        var oppPenalty = 100 * (1 - (oppMobility / maxMobility));
+        var oppPenalty = 100 * (1 - oppMobility / maxMobility);
 
         // Weighted sum (adjust weights as needed)
         return 0.5 * reward + 0.3 * mobility + 0.2 * oppPenalty;
       }
 
       function playminimaxid(role) {
-        var deadline = Date.now() + (playclock - 2) * 1000;
-        console.log(deadline);
-        var best = findlegalx(state, library);
+        var deadline = Date.now() + (playclock - 2.5) * 1000; // Increased buffer
+        // Get just the first legal move instead of all legal moves
+        var best = findlegals(state, library)[0];
+        if (!best) return false; // Safety check
 
-        for (var k = 1; k < 25; k++) {
+        // Limited to 4 levels of exploration
+        for (var k = 1; k <= 4; k++) {
+          if (Date.now() > deadline) {
+            console.log("Time's up at depth", k - 1);
+            break;
+          }
           var action = simpleminimaxid(role, state, k, deadline);
           if (action === false) {
-            console.log(k - 1);
+            console.log("Search interrupted at depth", k - 1);
             break;
           }
           best = action;
+          // Check time again after finding best move
+          if (Date.now() > deadline) {
+            console.log("Time's up after finding move at depth", k);
+            break;
+          }
         }
         // ε-greedy: explore randomly with probability epsilon
         // epsilon decreases after each move to prioritize exploration less over time
@@ -132,26 +160,40 @@
         epsilon = Math.max(0.01, epsilon * 0.95);
         if (Math.random() < epsilon) {
           var legals = findlegals(state, library);
-          return legals[Math.floor(Math.random() * legals.length)];
+          if (legals.length > 0) {
+            return legals[Math.floor(Math.random() * legals.length)];
+          }
         }
         // Otherwise exploit
         return best;
       }
 
       function simpleminimaxid(role, state, depth, deadline) {
-        var actions = shuffle(findlegals(state, library));
+        if (findterminalp(state, library) || depth <= 0) {
+          return evaluate(role, state);
+        }
+        if (Date.now() > deadline) return false;
+
+        var actions = findlegals(state, library);
         if (actions.length === 0) return false;
         if (actions.length === 1) return actions[0];
+
+        // Only shuffle if we have fewer than 20 legal moves
+        if (actions.length <= 20) {
+          actions = shuffle(actions);
+        }
 
         var best = actions[0];
         var score = 0;
         nodes = 0;
 
         for (var i = 0; i < actions.length; i++) {
+          if (Date.now() > deadline) return best;
+
           var newstate = simulate(actions[i], state, library);
           var newscore = minimaxid(role, newstate, depth, deadline, 0, 100);
-          if (newscore === false) return false;
-          if (newscore === 100) return actions[i];
+          if (newscore === false) return best; // Return best found so far
+          if (newscore === 100) return actions[i]; // Immediate return of winning move
           if (newscore > score) {
             best = actions[i];
             score = newscore;
@@ -163,11 +205,13 @@
 
       function minimaxid(role, state, depth, deadline, alpha, beta) {
         nodes++;
-        if (findterminalp(state, library) || depth <= 0) {
+        if (findterminalp(state, library)) {
           terminals++;
+          return findreward(role, state, library);
+        }
+        if (depth <= 0) {
           return evaluate(role, state);
         }
-
         if (Date.now() > deadline) return false;
 
         var active = findcontrol(state, library);
@@ -182,11 +226,22 @@
         var actions = findlegals(state, library);
         if (actions.length === 0) return 0;
 
+        if (Date.now() > deadline) return false; // Check deadline before starting
+
         var score = 0;
         for (var i = 0; i < actions.length; i++) {
+          if (Date.now() > deadline) return score; // Return current best score
+
           var newstate = simulate(actions[i], state, library);
-          var newscore = minimaxid(role, newstate, depth - 1, deadline, alpha, beta);
-          if (newscore === false) return false;
+          var newscore = minimaxid(
+            role,
+            newstate,
+            depth - 1,
+            deadline,
+            alpha,
+            beta
+          );
+          if (newscore === false) return score; // Return current best score
           if (newscore === 100) return 100;
           if (newscore > score) score = newscore;
           if (score > alpha) alpha = score;
@@ -200,11 +255,22 @@
         var actions = findlegals(state, library);
         if (actions.length === 0) return 0;
 
+        if (Date.now() > deadline) return false; // Check deadline before starting
+
         var score = 100;
         for (var i = 0; i < actions.length; i++) {
+          if (Date.now() > deadline) return score; // Return current best score
+
           var newstate = simulate(actions[i], state, library);
-          var newscore = minimaxid(role, newstate, depth - 1, deadline, alpha, beta);
-          if (newscore === false) return false;
+          var newscore = minimaxid(
+            role,
+            newstate,
+            depth - 1,
+            deadline,
+            alpha,
+            beta
+          );
+          if (newscore === false) return score; // Return current best score
           if (newscore === 0) return 0;
           if (newscore < score) score = newscore;
           if (score < beta) beta = score;
@@ -224,7 +290,6 @@
         return array;
       }
 
-
       //==============================================================================
       // End of player code
       //==============================================================================
@@ -236,63 +301,92 @@
   <body bgcolor="#aabbbb" onload="doinitialize()">
     <center>
       <table width="720" cellspacing="0" cellpadding="40" bgcolor="#ffffff">
-        <tbody><tr>
-          <td>
-            <!--=======================================================================-->
+        <tbody>
+          <tr>
+            <td>
+              <!--=======================================================================-->
 
-            <center>
-              <table width="640" cellpadding="0">
-                <tbody><tr>
-                  <td width="180" align="center" valign="center">
-                    <img width="130" src="./chicken_littler_files/ggp.jpg">
-                  </td>
-                  <td align="center">
-                    <span style="font-size: 18pt">&nbsp;</span>
-                    <span style="font-size: 32pt">Gamemaster</span><br>
-                  </td>
-                  <td width="180" align="center" style="color: #000066; font-size: 18px">
-                    <i>General<br>Game<br>Playing</i>
-                  </td>
-                </tr>
-              </tbody></table>
-            </center>
-
-            <!--=======================================================================-->
-
-            <br>
-            <table width="640" cellpadding="8" cellspacing="0" bgcolor="#f4f8f8" border="1">
-              <tbody><tr height="40">
-                <td align="center">
-                  <table style="color: #000066; font-size: 18px">
-                    <tbody><tr>
-                      <td>
-                        Protocol: localstorage<br>
-                        Metagamer: none<br>
-                        Strategy: custom<br>
-                        Identifier: <span id="player">chicken_littler</span>
-                        <img src="./chicken_littler_files/pencil.gif" onclick="doplayer()">
+              <center>
+                <table width="640" cellpadding="0">
+                  <tbody>
+                    <tr>
+                      <td width="180" align="center" valign="center">
+                        <img
+                          width="130"
+                          src="http://gamemaster.stanford.edu/images/ggp.jpg"
+                        />
+                      </td>
+                      <td align="center">
+                        <span style="font-size: 18pt">&nbsp;</span>
+                        <span style="font-size: 32pt">Gamemaster</span><br />
+                      </td>
+                      <td
+                        width="180"
+                        align="center"
+                        style="color: #000066; font-size: 18px"
+                      >
+                        <i>General<br />Game<br />Playing</i>
                       </td>
                     </tr>
-                  </tbody></table>
-                </td>
-              </tr>
-            </tbody></table>
-            <br>
+                  </tbody>
+                </table>
+              </center>
 
-            <!--=======================================================================-->
+              <!--=======================================================================-->
 
-            <center>
-              <br>
-              <textarea id="transcript" style="font-family: courier" rows="30" cols="80" readonly=""></textarea>
-            </center>
+              <br />
+              <table
+                width="640"
+                cellpadding="8"
+                cellspacing="0"
+                bgcolor="#f4f8f8"
+                border="1"
+              >
+                <tbody>
+                  <tr height="40">
+                    <td align="center">
+                      <table style="color: #000066; font-size: 18px">
+                        <tbody>
+                          <tr>
+                            <td>
+                              Protocol: localstorage<br />
+                              Metagamer: none<br />
+                              Strategy: custom<br />
+                              Identifier:
+                              <span id="player">chicken_littler</span>
+                              <img
+                                src="http://gamemaster.stanford.edu/images/pencil.gif"
+                                onclick="doplayer()"
+                              />
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <br />
 
-            <!--=======================================================================-->
-          </td>
-        </tr>
-      </tbody></table>
+              <!--=======================================================================-->
+
+              <center>
+                <br />
+                <textarea
+                  id="transcript"
+                  style="font-family: courier"
+                  rows="30"
+                  cols="80"
+                  readonly=""
+                ></textarea>
+              </center>
+
+              <!--=======================================================================-->
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </center>
-  
-
-  
-
-</body><!--=======================================================================--></html>
+  </body>
+  <!--=======================================================================-->
+</html>
