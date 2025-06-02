@@ -43,6 +43,7 @@
       var roles = [];
       var state = [];
       var epsilon = 0.2; // Initial exploration rate of 20%
+      var headstartMove = null; // store first move found during headstart
 
       //==============================================================================
 
@@ -84,6 +85,19 @@
         library = definemorerules([], rules);
         roles = findroles(library);
         state = findinits(library);
+        // time buffer
+        var deadline = Date.now() + (startclock - 2.5) * 1000;
+        // fallback move
+        headstartMove = findlegals(state, library)[0];
+        var best = headstartMove;
+        // use iterative deepening to explore the game tree during the start clock
+        for (var depth = 1; depth <= 8; depth++) {
+          if (Date.now() > deadline) break;
+          var action = playminimaxidinner(state, depth, deadline);
+          if (action === false) break;
+          best = action;
+        }
+        headstartMove = best;
         return "ready";
       }
 
@@ -133,8 +147,15 @@
         if (typeof move !== "undefined" && move !== null) {
           state = simulate(move, state, library);
         }
+
         if (findcontrol(state, library) !== role) return false;
-        // if it is our move, use iterative deepening minimax
+
+        // check if first move and if so, use whatever found from headstart
+        if (headstartMove !== null) {
+          var moveToPlay = headstartMove;
+          headstartMove = null;  
+          return moveToPlay;
+        }
         return playminimaxid();
       }
 
@@ -162,7 +183,13 @@
         // ε-greedy: explore randomly with probability epsilon
         // epsilon decreases after each move to prioritize exploration less over time
         // and exploitation more as become more confident in moves
-        epsilon = Math.max(0.01, epsilon * 0.95);
+        if (headstartMove === null) {
+          // If we already used the headstart move, decay slowly
+          epsilon = Math.max(0.01, epsilon * 0.95);
+        } else {
+          // If still using early-game logic, decay faster since want to exploit more on path
+          epsilon = Math.max(0.01, epsilon * 0.8);
+        }
         if (Math.random() < epsilon) {
           var legals = findlegals(state, library);
           if (legals.length > 0) {
