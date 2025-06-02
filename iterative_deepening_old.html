@@ -17,20 +17,22 @@
     ></script>
     <script type="text/javascript">
       //==============================================================================
-      // TEST 123456
-      // minimax with iterative deepening or persistent tree search?
-      // persistent: expand tree one node at a time, select node which optimizes
-      // combo of exploration/exploitation
-      // alpha beta pruning - done
-      // evaluation function: hybrid (weighs intermediate reward, mobility, and minimized opp mob) - done
-      // added epsilon greedy to explore more earlier on in game, exploit later on
-      // if terminal state, take the move to win - done
-      // headstart - done
-      // bigswitch - use startclock to analyze game and use results to adjust runtime play strategy
+      // This player uses iterative deepening minimax with alpha-beta pruning to select moves.
+      // It assumes the opponent plays optimally to minimize our score.
+      // 
+      // It uses a hybrid evaluation function depending on the structure of the game:
+      // - If the game has intermediate rewards and a manageable branching factor, we use a weighted 
+      //   heuristic combining mobility, reward proximity, and pessimism about terminal outcomes.
+      // - If the game has sparse rewards or high branching factor, we switch to Monte Carlo simulation
+      //   to estimate state value more robustly.
       //
-      // symbolizing of game rules
-      // bigswitch to switch between different game strategies depending on the game
-      // pruning
+      // We use Bigswitch to decide between these two evaluation modes based on a few short rollouts 
+      // at the beginning.
+      //
+      // During the start clock, we perform a headstart minimax search to select an opening move.
+      //
+      // During gameplay, we balance exploration and exploitation with an epsilon-greedy strategy 
+      // that favors random moves early (for exploration) and decays epsilon over time (toward exploitation).
       //==============================================================================
 
       var manager = "manager";
@@ -49,22 +51,6 @@
       var useMonteCarlo = false; // Bigswitch toggles this
 
       //==============================================================================
-
-      // This player uses iterative deepening to explore the game tree, one level at a time
-      // The player continues until time runs out, and then will choose the action that
-      // gives the maximal value by that time, with the assumption that its opponent will choose the
-      // action that minimizes our player's reward (minimax strategy).
-      // This player using a combination of evaluation heuristics so that it is well rounded and can adapt
-      // well to a variety of game needs. Currently, our evaluation breakdown is:
-      // 0.3 * mobility
-      // 0.3 * pessimistic
-      // 0.4 * intermediateReward
-      // This creates a player that is somewhat cautious in its exploration and values score slightly higher than o
-      // ther factors. Our player has strong time awareness and ensures that even when time runs out, we still have a
-      // legal move selected. To accomplish this, we created a deadline barrier which acts as a buffer from the game
-      // clock and the players action so that we never actually run out of time and generate an error. We go through
-      // 4 levels of exploration which we found to be a happy medium between time constraints and educated actions.
-      // With larger games, 5 levels and beyond seemed to cut it close on time.
 
       function shuffle(array) {
         for (var i = array.length - 1; i > 0; i--) {
@@ -167,7 +153,6 @@
 
       // Mobility Function
       // Returns a high score when player in control has many moves (if us), or when they have few moves (if opponent)
-
       function mobilityEval(state) {
         var controller = findcontrol(state, library);
         var actions = findlegals(state, library); // Legal moves for controller in this state
@@ -189,7 +174,11 @@
         return findreward(role, state, library) * 1;
       }
 
-      // balanced player that uses a variety of evaluation functions
+      // This function uses a combination of evaluation heuristics so that it is well rounded and can adapt
+      // well to a variety of game needs. Currently, our evaluation breakdown is:
+      // 0.3 * mobility
+      // 0.3 * pessimistic
+      // 0.4 * intermediateReward
       function combinedEval(state) {
         // If this is a terminal state and we win, return maximum score
         if (
@@ -213,16 +202,20 @@
       }
 
       // simulate rewards from potential move sequences and take the average
-      // over all simulations to get expected reward from a current state
+      // over all simulations to get expected reward from a current state.
+      // use discounted reward to place higher weight on faster wins.
       function monteCarloEval(state, deadline, rollouts = 5) {
         var total = 0;
-        // reduce to avoid timeout
         var maxDepth = 10;
+        var gamma = 0.9; // Discount factor for reward weighting
+
         for (var i = 0; i < rollouts; i++) {
           var rolloutState = state;
           var depth = 0;
+
           while (!findterminalp(rolloutState, library) && depth < maxDepth) {
-            if (Date.now() > deadline - 100) break; // fallback if time runs out
+            if (Date.now() > deadline - 100) break;
+
             var actions = findlegals(rolloutState, library);
             if (actions.length === 0) break;
 
@@ -231,10 +224,13 @@
             depth++;
           }
 
-          total += findreward(role, rolloutState, library);
+          var reward = findreward(role, rolloutState, library);
+          var discountedReward = reward * Math.pow(gamma, depth);
+          total += discountedReward;
         }
         return total / rollouts;
       }
+
 
       function play(move) {
         if (typeof move !== "undefined" && move !== null) {
