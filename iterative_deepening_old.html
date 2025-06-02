@@ -191,6 +191,20 @@
 
       // balanced player that uses a variety of evaluation functions
       function combinedEval(state) {
+        // If this is a terminal state and we win, return maximum score
+        if (
+          findterminalp(state, library) &&
+          findreward(role, state, library) === 100
+        ) {
+          return 100;
+        }
+        // If this is a terminal state and we lose, return minimum score
+        if (
+          findterminalp(state, library) &&
+          findreward(role, state, library) === 0
+        ) {
+          return 0;
+        }
         return (
           0.3 * mobilityEval(state) +
           0.4 * intermediateRewardEval(state) +
